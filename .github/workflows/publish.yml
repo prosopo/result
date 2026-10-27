@@ -1,0 +1,33 @@
+name: Publish
+
+# Publishes to npm when a GitHub release is published. Uses npm trusted
+# publishing (OIDC), so no NPM_TOKEN secret is stored. npm only lets you add a
+# trusted publisher to a package that already exists, so the very first
+# version has to be published by hand by an @prosopo npm org member.
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test
+      - name: Check the release tag matches package.json
+        run: test "${GITHUB_REF_NAME#v}" = "$(node -p 'require("./package.json").version')"
+      - run: pnpm publish --no-git-checks
+        env:
+          PNPM_CONFIG_PROVENANCE: "true"
