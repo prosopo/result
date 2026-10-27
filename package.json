@@ -47,10 +47,12 @@
 		"lint": "biome check .",
 		"lint:fix": "biome check --write .",
 		"test": "vitest run --coverage",
+		"changeset": "changeset",
 		"prepublishOnly": "pnpm run build"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.6.3",
+		"@changesets/cli": "3.0.3",
 		"@vitest/coverage-v8": "5.0.5",
 		"typescript": "5.9.3",
 		"vitest": "5.0.5"
