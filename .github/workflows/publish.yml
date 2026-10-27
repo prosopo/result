@@ -1,33 +1,105 @@
 name: Publish
 
-# Publishes to npm when a GitHub release is published. Uses npm trusted
-# publishing (OIDC), so no NPM_TOKEN secret is stored. npm only lets you add a
-# trusted publisher to a package that already exists, so the very first
-# version has to be published by hand by an @prosopo npm org member.
+# Changesets flow: while unreleased changesets exist on main, the version job
+# keeps a "Version Packages" PR up to date. Merging that PR bumps package.json,
+# so the next run packs and publishes to npm.
+# Publishing uses npm trusted publishing (OIDC) registered against this file
+# name, so no NPM_TOKEN is stored; renaming the file breaks publishing.
 on:
-  release:
-    types: [published]
+  push:
+    branches: [main]
 
-permissions:
-  contents: read
-  id-token: write
+permissions: {}
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
-  publish:
+  select-mode:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      mode: ${{ steps.select-mode.outputs.mode }}
+      publish-plan-artifact-id: ${{ steps.select-mode.outputs.publish-plan-artifact-id }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
       - uses: actions/setup-node@v7
         with:
           node-version: 24
-          cache: pnpm
-          registry-url: https://registry.npmjs.org
+          package-manager-cache: false
       - run: pnpm install --frozen-lockfile
+      - id: select-mode
+        uses: changesets/action/select-mode@66d7d1ddafddf1ef45f98ee51a7496f9cdadb2f4
+
+  version:
+    if: needs.select-mode.outputs.mode == 'version'
+    needs: select-mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - uses: changesets/action/version@66d7d1ddafddf1ef45f98ee51a7496f9cdadb2f4
+
+  pack:
+    if: needs.select-mode.outputs.mode == 'publish'
+    needs: select-mode
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      pack-dir-artifact-id: ${{ steps.pack.outputs.pack-dir-artifact-id }}
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run lint
       - run: pnpm run test
-      - name: Check the release tag matches package.json
-        run: test "${GITHUB_REF_NAME#v}" = "$(node -p 'require("./package.json").version')"
-      - run: pnpm publish --no-git-checks
-        env:
-          PNPM_CONFIG_PROVENANCE: "true"
+      - run: pnpm run build
+      - id: pack
+        uses: changesets/action/pack@66d7d1ddafddf1ef45f98ee51a7496f9cdadb2f4
+        with:
+          publish-plan-artifact-id: ${{ needs.select-mode.outputs.publish-plan-artifact-id }}
+
+  publish:
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - run: pnpm install --frozen-lockfile
+      - uses: changesets/action/publish@66d7d1ddafddf1ef45f98ee51a7496f9cdadb2f4
+        with:
+          pack-dir-artifact-id: ${{ needs.pack.outputs.pack-dir-artifact-id }}

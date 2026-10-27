@@ -387,11 +387,13 @@ CI runs all four on every pull request and on pushes to `main` (`.github/workflo
 
 ## Releasing
 
-1. Bump `version` in `package.json` and merge.
-2. Publish a GitHub release tagged `v<version>`, for example `v0.2.0`.
-3. `.github/workflows/publish.yml` checks the tag matches `package.json`, runs the tests and publishes to npm with provenance. It uses npm trusted publishing, so no npm token is stored in the repo.
+Versions are managed with [Changesets](https://github.com/changesets/changesets).
 
-The very first version has to be published by hand (`npm publish --access public --provenance=false`), because npm only allows a trusted publisher to be added to a package that already exists.
+1. In your PR, run `pnpm changeset`, pick `patch`, `minor` or `major`, and write a line for the changelog. Commit the generated file in `.changeset/`. CI fails a PR that changes the package without one; for changes that need no release (CI, docs), run `pnpm changeset --empty`.
+2. When the PR merges, `.github/workflows/publish.yml` opens or updates a "Version Packages" PR that bumps `package.json` and writes `CHANGELOG.md`.
+3. Merging that PR runs the same workflow again. This time it lints, tests, builds, publishes to npm and creates a GitHub release with a `@prosopo/result@<version>` tag.
+
+Publishing uses npm trusted publishing (OIDC) registered against `publish.yml`, so no npm token is stored in the repo. The very first version had to be published by hand (`npm publish --access public --provenance=false`), because npm only allows a trusted publisher to be added to a package that already exists.
 
 ## Licence
 
